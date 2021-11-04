@@ -69,7 +69,7 @@ def deepfool(image, net, num_classes=10, overshoot=0.02, max_iter=50):
             #print(fs)
             f_k = (fs[0, I[k]] - fs[0, I[0]]).data.cpu().numpy()
             #print(f_k)
-            pert_k = abs(f_k)/np.linalg.norm(w_k.flatten(), ord=1)
+            pert_k = abs(f_k)/np.linalg.norm(w_k.flatten()) #for L inf norm use ord=np.inf as argument in norm function, for L1 norm ord=1
             #print(pert_k)
 
             # determine which w_k to use

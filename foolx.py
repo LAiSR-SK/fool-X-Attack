@@ -74,7 +74,7 @@ def foolx(image, net, eps=0.05, num_classes=10, overshoot=0.02, max_iter=50):
             f_k = (fs[0, I[k]] - fs[0, I[0]]).data.cpu().numpy()
 
             #Calculate perturbation using deepfool formula
-            pert_k = abs(f_k) / np.linalg.norm(w_k.flatten(), ord=1) #ord=np.inf)
+            pert_k = abs(f_k) / np.linalg.norm(w_k.flatten()) #for L inf norm use ord=np.inf as argument in norm function, for L1 norm ord=1
 
             # determine which w_k to use
             if pert_k > pert:  # we change here the "<" to be ">" to get the max hyperplanes

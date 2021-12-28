@@ -9,7 +9,7 @@ from foolx import foolx
 import os
 import time
 
-torch.device('cuda')
+torch.device('cpu')
 
 net = models.resnet34(pretrained=True)
 #net = models.alexnet(pretrained=True)
@@ -46,8 +46,6 @@ print("Perturbed label = ", str_label_pert)
 def clip_tensor(A, minv, maxv):
     A = torch.max(A, minv*torch.ones(A.shape))
     A = torch.min(A, maxv*torch.ones(A.shape))
-    #A = A.to(device='cuda:0')
-    #print(A.is_cuda)
     return A
 
 clip = lambda x: clip_tensor(x, 0, 255)

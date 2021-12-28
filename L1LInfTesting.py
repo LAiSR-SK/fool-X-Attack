@@ -18,22 +18,22 @@ net.eval()
 mean = [ 0.485, 0.456, 0.406 ]
 std = [ 0.229, 0.224, 0.225 ]
 
-hybrows = []
+foolxrows = []
 dfrows = []
 counter = 0
-hybridApproach_Testing_Results = ""
+foolxApproach_Testing_Results = ""
 Accuracy = 0
 DeepfoolAccuracy = 0
 DeepfoolAvgTime = 0
 DeepfoolAvgFk = 0
 DeepfoolAvgDiff = 0
 DeepfoolAvgFroDiff = 0
-Hybrid2Accuracy = 0
-HybridAvgTime = 0
-HybridAvgFk = 0
-HybridAvgDiff = 0
-HybridAvgFroDiff = 0
-hybridcsv = 'hybridgooglenetl1.csv'
+FoolXAccuracy = 0
+FoolXAvgTime = 0
+FoolXAvgFk = 0
+FoolXAvgDiff = 0
+FoolXAvgFroDiff = 0
+foolxcsv = 'foolxgooglenetl1.csv'
 deepfoolcsv = 'deepfoolgooglenetl1.csv'
 fieldnames = ['Image', 'Original Label', 'Classified Label Before Perturbation', 'Perturbed Label', 'Memory Usage',
                   'Iterations', 'Time', 'F_k', 'Avg Difference', 'Frobenius of Difference']
@@ -46,7 +46,7 @@ for filename in glob.glob('D:/ImageNet/ImagenetDataset/ILSVRC2012/ILSVRC/Data/CL
     print(filename[47:75])
     if counter == 5000:
         break
-    print(" \n\n\n**************** Hybrid Approach DeepFool 2 *********************\n")
+    print(" \n\n\n**************** Fool-X *********************\n")
     im_orig = Image.open(filename).convert('RGB')
     print(filename)
     im = transforms.Compose([
@@ -61,7 +61,7 @@ for filename in glob.glob('D:/ImageNet/ImagenetDataset/ILSVRC2012/ILSVRC/Data/CL
     end_time = time.time()
     execution_time = end_time - start_time
     print("execution time = " + str(execution_time))
-    HybridAvgTime = HybridAvgTime + execution_time
+    FoolXAvgTime = FoolXAvgTime + execution_time
 
     labels = open(os.path.join('synset_words.txt'), 'r').read().split('\n')
 
@@ -81,7 +81,7 @@ for filename in glob.glob('D:/ImageNet/ImagenetDataset/ILSVRC2012/ILSVRC/Data/CL
 
     if (int(label_pert) == int(correct)):
         print("Classifier is correct")
-        Hybrid2Accuracy = Hybrid2Accuracy + 1
+        FoolXAccuracy = FoolXAccuracy + 1
 
 
     def clip_tensor(A, minv, maxv):
@@ -112,19 +112,19 @@ for filename in glob.glob('D:/ImageNet/ImagenetDataset/ILSVRC2012/ILSVRC/Data/CL
     diff = imagetransform(pert_image.cpu()[0]) - tensortransform(im_orig)
     fro = np.linalg.norm(diff.numpy())
     average = torch.mean(torch.abs(diff))
-    HybridAvgFk = HybridAvgFk + newf_k
-    HybridAvgDiff = HybridAvgDiff + average
-    HybridAvgFroDiff = HybridAvgFroDiff + fro
-    hybrows = []
-    hybrows.append([filename[47:75], str_label_correct, str_label_orig, str_label_pert,
-                    torch.cuda.memory_stats('cuda:0')['active.all.current'], str(loop_i), str(execution_time), newf_k,
+    FoolXAvgFk = FoolXAvgFk + newf_k
+    FoolXAvgDiff = FoolXAvgDiff + average
+    FoolXAvgFroDiff = FoolXAvgFroDiff + fro
+    foolxrows = []
+    foolxrows.append([filename[47:75], str_label_correct, str_label_orig, str_label_pert,
+                    torch.cuda.memory_stats('cpu')['active.all.current'], str(loop_i), str(execution_time), newf_k,
                     average, fro])
-    with open(hybridcsv, 'a', newline='') as csvfile:
+    with open(foolxcsv, 'a', newline='') as csvfile:
         csvwriter = csv.writer(csvfile)
 
         csvwriter.writerows(hybrows)
 
-    print("#################################### END Hybrid Testing ############################################################\n")
+    print("#################################### END Fool-X Testing ############################################################\n")
 
     print("\n\n\n\n\n\n\n\n\n****************DeepFool Testing *********************\n")
     # Open image
@@ -224,15 +224,15 @@ for filename in glob.glob('D:/ImageNet/ImagenetDataset/ILSVRC2012/ILSVRC/Data/CL
 
     counter = counter + 1
 
-with open(hybridcsv, 'a', newline='') as csvfile:
+with open(foolxcsv, 'a', newline='') as csvfile:
     csvwriter = csv.writer(csvfile)
     csvwriter.writerows(["Epsilon: " + str(eps)])
     csvwriter.writerows(["Accuracy: " + str(Accuracy / 5000)])
-    csvwriter.writerows(["Perturbed Accuracy: " + str(Hybrid2Accuracy/5000)])
-    csvwriter.writerows(["Avg F_k: " + str(HybridAvgFk/5000)])
-    csvwriter.writerows(["Avg Difference: " + str(HybridAvgDiff / 5000)])
-    csvwriter.writerows(["Avg Frobenius of Difference: " + str(HybridAvgFroDiff/5000)])
-    csvwriter.writerows(["Avg Time: " + str(HybridAvgTime / 5000)])
+    csvwriter.writerows(["Perturbed Accuracy: " + str(FoolXAccuracy/5000)])
+    csvwriter.writerows(["Avg F_k: " + str(FoolXAvgFk/5000)])
+    csvwriter.writerows(["Avg Difference: " + str(FoolXAvgDiff / 5000)])
+    csvwriter.writerows(["Avg Frobenius of Difference: " + str(FoolXAvgFroDiff/5000)])
+    csvwriter.writerows(["Avg Time: " + str(FoolXAvgTime / 5000)])
 with open(deepfoolcsv, 'a', newline='') as csvfile:
     csvwriter = csv.writer(csvfile)
     csvwriter.writerows(["Epsilon: " + str(eps)])

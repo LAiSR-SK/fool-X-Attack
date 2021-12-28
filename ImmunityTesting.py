@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch.autograd import Variable
-from ImmunityTestingFunction import hybridImmunityTesting
+from ImmunityTestingFunction import foolxImmunityTesting
 from ImmunityTestingFunction import deepfoolImmunityTesting
 from ImmunityTestingFunction import FGSMImmunityTesting
 import torchvision.models as models
@@ -16,15 +16,13 @@ import os
 import glob
 import cv2
 
-#Evaluation of immunity on deepfool, hybrid, FGSM; finetunes network on adversarial examples than uses functions in ImmunityTestingFunction.py to test
+#Evaluation of immunity on deepfool, foolx, FGSM; finetunes network on adversarial examples than uses functions in ImmunityTestingFunction.py to test
 
 #Define the network to be finetuned and use to train
 #net = models.resnet34(pretrained=True)
 #net = models.alexnet(pretrained=True)
 net = models.resnet101(pretrained=True)
 #net = models.googlenet(pretrained=True)
-#Put network on GPU
-net.cuda()
 #Set network to evaluation mode
 net.eval()
 
@@ -33,20 +31,16 @@ ILSVRClabels = open(os.path.join('ILSVRC2012validation.txt'), 'r').read().split(
 
 #Define networks to be finetuned for each approach, load them into the GPU, and set them all in training mode
 deepfoolnet = models.resnet101(pretrained=True)
-deepfoolnet.cuda()
 deepfoolnet.train()
 
-hybridnet = models.resnet101(pretrained=True)
-hybridnet.cuda()
-hybridnet.train()
+foolxnet = models.resnet101(pretrained=True)
+foolxnet.train()
 
 fgsmnet = models.resnet101(pretrained=True)
-fgsmnet.cuda()
 fgsmnet.train()
 
 #Training function for deepfool, takes the original network, the network to be finetuned, and the name of the network that will be used in the csv and pth files
 def trainDeepfoolImmunity(orig_net, immunenet, name):
-    immunenet.cuda()
     immunenet.train()
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
@@ -83,7 +77,7 @@ def trainDeepfoolImmunity(orig_net, immunenet, name):
             inputs = pert_image
             labels = ILSVRClabels[np.int(counter)].split(' ')[1]
             labels = torch.tensor([int(labels)])
-            labels = labels.to('cuda')
+            labels = labels.to('cpu')
             # zero the parameter gradients
             optimizer.zero_grad()
 
@@ -107,8 +101,8 @@ def trainDeepfoolImmunity(orig_net, immunenet, name):
     torch.save(immunenet.state_dict(), PATH)
     return immunenet
 
-#Training function for hybrid, takes the original network, the network to be finetuned, the epsilon value, and the name of the network that will be used in the csv and pth files
-def trainHybridImmunity(orig_net, immunenet, name, eps):
+#Training function for foolx, takes the original network, the network to be finetuned, the epsilon value, and the name of the network that will be used in the csv and pth files
+def trainFoolXImmunity(orig_net, immunenet, name, eps):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(immunenet.parameters(), lr=1e-5)
     mean = [0.485, 0.456, 0.406]
@@ -116,11 +110,11 @@ def trainHybridImmunity(orig_net, immunenet, name, eps):
 
     for epoch in range(5):  # loop over the dataset multiple times
         if epoch != 0:
-            PATH = './hybridadv_net' + name + str(epoch) + '.pth'
+            PATH = './foolxadv_net' + name + str(epoch) + '.pth'
             torch.save(immunenet.state_dict(), PATH)
             immunenet.eval()
-            csv = 'hybrid' + name + 'immunityepoch' + str(epoch) + str(eps) + '.csv'
-            hybridImmunityTesting(net, immunenet, eps, csv)
+            csv = 'foolx' + name + 'immunityepoch' + str(epoch) + str(eps) + '.csv'
+            foolxImmunityTesting(net, immunenet, eps, csv)
             immunenet.train()
         running_loss = 0.0
         i = 0
@@ -139,7 +133,7 @@ def trainHybridImmunity(orig_net, immunenet, name, eps):
             inputs = pert_image
             labels = ILSVRClabels[np.int(counter)].split(' ')[1]
             labels = torch.tensor([int(labels)])
-            labels = labels.to('cuda')
+            labels = labels.to('cpu')
             # zero the parameter gradients
             optimizer.zero_grad()
 
@@ -158,7 +152,7 @@ def trainHybridImmunity(orig_net, immunenet, name, eps):
             i = i + 1
             counter = counter + 1
     print('Finished Training')
-    PATH = './hybridadv_net' + str(eps) + name + '.pth'
+    PATH = './foolxadv_net' + str(eps) + name + '.pth'
     torch.save(immunenet.state_dict(), PATH)
     return immunenet
 
@@ -193,21 +187,21 @@ def trainFGSMImmunity(orig_net, immunenet, name, eps):
             img = (img - mean) / std
             img = img.transpose(2, 0, 1)
 
-            inp = Variable(torch.from_numpy(img).to('cuda:0').float().unsqueeze(0), requires_grad=True)
+            inp = Variable(torch.from_numpy(img).to('cpu').float().unsqueeze(0), requires_grad=True)
             out = orig_net(inp)
             pred = np.argmax(out.data.cpu().numpy())
 
-            loss = criterion(out, Variable(torch.Tensor([float(pred)]).to('cuda:0').long()))
+            loss = criterion(out, Variable(torch.Tensor([float(pred)]).to('cpu').long()))
             loss.backward()
 
             inp.data = inp.data + (eps * torch.sign(inp.grad.data))
-            print("Memory Usage: ", torch.cuda.memory_stats('cuda:0')['active.all.current'])
+            print("Memory Usage: ", torch.cuda.memory_stats('cpu')['active.all.current'])
             inp.grad.data.zero_()  # unnecessary
             inputs = inp
             labels = ILSVRClabels[np.int(counter)].split(' ')[1]
             #print(labels)
             labels = torch.tensor([int(labels)])
-            labels = labels.to('cuda')
+            labels = labels.to('cpu')
             # zero the parameter gradients
             optimizer.zero_grad()
 
@@ -234,12 +228,12 @@ def trainFGSMImmunity(orig_net, immunenet, name, eps):
 
 #Call functions for training and testing
 #deepfoolnet = trainDeepfoolImmunity(net, deepfoolnet, 'resnet101')
-#hybridnet = trainHybridImmunity(net, hybridnet, 'resnet101', 0.2)
+#foolxnet = trainFoolXImmunity(net, foolxnet, 'resnet101', 0.2)
 fgsmnet = trainFGSMImmunity(net, fgsmnet, 'resnet101', 0.0005)
 #deepfoolnet.eval()
-#hybridnet.eval()
+#foolxnet.eval()
 fgsmnet.eval()
 #deepfoolImmunityTesting(net, deepfoolnet, 'deepfoolresnet101immunityfinished.csv')
-#hybridImmunityTesting(net, hybridnet, 0.2, 'hybridresnet101immunityfinished0.2.csv')
+#foolxImmunityTesting(net, foolxnet, 0.2, 'foolXresnet101immunityfinished0.2.csv')
 FGSMImmunityTesting(net, fgsmnet, 0.0005, 'fgsmresnet101immunityfinished0.0005.csv')
 

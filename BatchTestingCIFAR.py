@@ -51,7 +51,16 @@ foolxcsv = 'foolxAlexNetCIFAR10.csv'
 fgsmcsv = 'fgsmAlexNetCIFAR10.csv'
 fieldnames = ['Image', 'Original Label', 'Classified Label Before Perturbation', 'Perturbed Label', 'Memory Usage', 'Iterations', 'Time', 'F_k', 'Avg Difference', 'Frobenius of Difference']
 
+#Check if cuda is available.
+is_cuda = torch.cuda.is_available()
+device = 'cpu'
 
+#If cuda is available use GPU for faster processing, if not, use CPU.
+if is_cuda:
+    print("Using GPU")
+    device = 'cuda:0'
+else:
+    print("Using CPU")
 
 dfrows = []
 hybrows = []
@@ -125,7 +134,7 @@ def main():
           break
       start_time = time.time()
       r, loop_i, label_orig, label_pert, pert_image, newf_k = deepfool(inputs, net)
-      print("Memory Usage: ", torch.cuda.memory_stats('cpu')['active.all.current'])
+      print("Memory Usage: ", torch.cuda.memory_stats(device)['active.all.current'])
       end_time = time.time()
       execution_time = end_time - start_time
       print("execution time = " + str(execution_time))
@@ -167,7 +176,7 @@ def main():
       DeepfoolAvgDiff = DeepfoolAvgDiff + average
       DeepfoolAvgFroDiff = DeepfoolAvgFroDiff + fro
       dfrows = []
-      dfrows.append([filename, str_label_correct, str_label_orig, str_label_pert, torch.cuda.memory_stats('cpu')['active.all.current'], str(loop_i), str(execution_time), newf_k, average, fro])
+      dfrows.append([filename, str_label_correct, str_label_orig, str_label_pert, torch.cuda.memory_stats(device)['active.all.current'], str(loop_i), str(execution_time), newf_k, average, fro])
       with open(deepfoolcsv, 'a', newline='') as csvfile:
         csvwriter = csv.writer(csvfile)
 
@@ -184,7 +193,7 @@ def main():
       print (filename)
       start_time = time.time()
       r, loop_i, label_orig, label_pert, pert_image, newf_k = foolx(inputs, net, eps)
-      print("Memory Usage: ", torch.cuda.memory_stats('cpu')['active.all.current'])
+      print("Memory Usage: ", torch.cuda.memory_stats(device)['active.all.current'])
       end_time = time.time()
       execution_time = end_time - start_time
       print("execution time = " + str(execution_time))
@@ -217,7 +226,7 @@ def main():
       FooolXAvgDiff = FoolXAvgDiff + average
       FoolXAvgFroDiff = FoolXAvgFroDiff + fro
       hybrows = []
-      hybrows.append([filename, str_label_correct, str_label_orig, str_label_pert, torch.cuda.memory_stats('cpu')['active.all.current'], str(loop_i), str(execution_time), newf_k, average, fro])
+      hybrows.append([filename, str_label_correct, str_label_orig, str_label_pert, torch.cuda.memory_stats(device)['active.all.current'], str(loop_i), str(execution_time), newf_k, average, fro])
       with open(foolxcsv, 'a', newline='') as csvfile:
           csvwriter = csv.writer(csvfile)
 
@@ -236,12 +245,12 @@ def main():
       start_time = time.time()
 
 
-      inp = Variable(torch.from_numpy(inputs.numpy()).to('cpu').float().unsqueeze(0), requires_grad=True)
+      inp = Variable(torch.from_numpy(inputs.numpy()).to(device).float().unsqueeze(0), requires_grad=True)
 
       out = net(inp)
       criterion = nn.CrossEntropyLoss()
       pred = np.argmax(out.data.cpu().numpy())
-      loss = criterion(out, Variable(torch.Tensor([float(pred)]).to('cpu').long()))
+      loss = criterion(out, Variable(torch.Tensor([float(pred)]).to(device).long()))
       print('Prediction before attack: %s' % (classes[pred]))
 
       # compute gradients
@@ -249,7 +258,7 @@ def main():
 
       # this is it, this is the method
       inp.data = inp.data + (eps * torch.sign(inp.grad.data))
-      print("Memory Usage: ", torch.cuda.memory_stats('cpu')['active.all.current'])
+      print("Memory Usage: ", torch.cuda.memory_stats(device)['active.all.current'])
       inp.grad.data.zero_()  # unnecessary
 
       end_time = time.time()
@@ -271,7 +280,7 @@ def main():
       FGSMAvgDiff = FGSMAvgDiff + average
       FGSMAvgFroDiff = FGSMAvgFroDiff + fro
       fgsmrows = []
-      fgsmrows.append([filename, classes[int(correct)], (classes[pred]), (classes[pred_adv]), torch.cuda.memory_stats('cpu')['active.all.current'], str(loop_i), str(execution_time), f_k, average, fro])
+      fgsmrows.append([filename, classes[int(correct)], (classes[pred]), (classes[pred_adv]), torch.cuda.memory_stats(device)['active.all.current'], str(loop_i), str(execution_time), f_k, average, fro])
       with open(fgsmcsv, 'a', newline='') as csvfile:
         csvwriter = csv.writer(csvfile)
 

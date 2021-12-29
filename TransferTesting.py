@@ -16,6 +16,19 @@ import torch.nn as nn
 import cv2
 import csv
 
+#Check if cuda is available.
+is_cuda = torch.cuda.is_available()
+device = 'cpu'
+torch.device('cpu')
+
+#If cuda is available use GPU for faster processing, if not, use CPU.
+if is_cuda:
+    print("Using GPU")
+    torch.device('cuda')
+    device = 'cuda:0'
+else:
+    print("Using CPU")
+
 #Transferability testing, generates perturbations on one network architecture, tests on another
 
 orig_alexnet = AlexNet()
@@ -34,6 +47,9 @@ eval_resnet34.load_state_dict(state)
 
 #Transfer testing for foolx, select first architecture to generate perturbations with, select second architecture to test against, epsilon value, and csv name
 def TransferTestingFoolX(net, net2, eps, csvname):
+    if is_cuda:
+        net.cuda()
+        net2.cuda()
     net.eval()
     net2.eval()
     foolxApproach_Testing_Results = ""
@@ -91,7 +107,10 @@ def TransferTestingFoolX(net, net2, eps, csvname):
             print("Network 1 Classifier is correct on perturbed image")
             Net1FoolXAccuracy = Net1FoolXAccuracy + 1
 
-        label2 = net2(im[None, :].cpu())
+        if is_cuda:
+            label2 = net2(im[None, :].cuda())
+        else:
+            label2 = net2(im[None, :].cpu())
         label2 = np.argmax(label2.detach().cpu().numpy())
         str_label_orig2 = labels[np.int(label2)].split(',')[0]
         label_pert2 = net2(pert_image)
@@ -186,7 +205,10 @@ def TransferTestingDeepfool(net, net2, csvname):
             print("Network 1 Classifier is correct on perturbed image")
             Net1DeepfoolAccuracy = Net1DeepfoolAccuracy + 1
 
-        label2 = net2(im[None, :].cpu())
+        if is_cuda:
+            label2 = net2(im[None, :].cuda())
+        else:
+            label2 = net2(im[None, :].cpu())
         label2 = np.argmax(label2.detach().cpu().numpy())
         str_label_orig2 = labels[np.int(label2)].split(',')[0]
         label_pert2 = net2(pert_image)
@@ -258,14 +280,14 @@ def TransferTestingFGSM(net, net2, eps, csvname):
         img = (img - mean) / std
         img = img.transpose(2, 0, 1)
 
-        inp = Variable(torch.from_numpy(img).to('cpu').float().unsqueeze(0), requires_grad=True)
+        inp = Variable(torch.from_numpy(img).to(device).float().unsqueeze(0), requires_grad=True)
 
         out = net(inp)
         out2 = net2(inp)
         criterion = nn.CrossEntropyLoss()
         pred = np.argmax(out.data.cpu().numpy())
         pred2 = np.argmax(out2.data.cpu().numpy())
-        loss = criterion(out, Variable(torch.Tensor([float(pred)]).to('cpu').long()))
+        loss = criterion(out, Variable(torch.Tensor([float(pred)]).to(device).long()))
         loss.backward()
         print('Network 1 Prediction before attack: %s' % (classes[pred].split(',')[0]))
         print('Network 2 Prediction before attack: %s' % (classes[pred2].split(',')[0]))
@@ -323,6 +345,9 @@ def TransferTestingFGSM(net, net2, eps, csvname):
 
 #Transfer testing for foolx with CIFAR10 dataset, select first architecture to generate perturbations with, select second architecture to test against, epsilon value, and csv name
 def CIFARFoolXTesting(original_net, transfer_net, eps, csvname):
+    if is_cuda:
+        original_net.cuda()
+        transfer_net.cuda()
     original_net.eval()
     transfer_net.eval()
     Net1Accuracy = 0
@@ -368,7 +393,10 @@ def CIFARFoolXTesting(original_net, transfer_net, eps, csvname):
         if (int(label_pert) == int(correct)):
             print("Network 1 Classifier is correct on perturbed image")
             Net1FoolXAccuracy = Net1FoolXAccuracy + 1
-        label2 = transfer_net(inputs[None, ...].cpu())
+        if is_cuda:
+            label2 = transfer_net(inputs[None, ...].cuda())
+        else:
+            label2 = transfer_net(inputs[None, ...].cpu())
         label2 = np.argmax(label2.detach().cpu().numpy())
         str_label_orig2 = classes[np.int(label2)].split(',')[0]
         label_pert2 = transfer_net(pert_image)

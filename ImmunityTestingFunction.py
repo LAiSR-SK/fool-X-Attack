@@ -13,6 +13,17 @@ from imagenet_labels import classes
 import cv2
 import csv
 
+#Check if cuda is available.
+is_cuda = torch.cuda.is_available()
+device = 'cpu'
+
+#If cuda is available use GPU for faster processing, if not, use CPU.
+if is_cuda:
+    print("Using GPU")
+    device = 'cuda:0'
+else:
+    print("Using CPU")
+
 #Contains functions called for testing immunity of deepfool, foolx, and FGSM.
 
 #testing function for all methods, takes an original network and 3 networks finetuned on each method as input
@@ -71,7 +82,7 @@ def testingFunction(net_orig, net_df, net_hyb, net_fgsm):
                             std=std)])(im_orig)
       start_time = time.time()
       r, loop_i, label_orig, label_pert, pert_image, newf_k = deepfool(im, net_df)
-      print("Memory Usage: ", torch.cuda.memory_stats('cpu')['active.all.current'])
+      print("Memory Usage: ", torch.cuda.memory_stats(device)['active.all.current'])
       end_time = time.time()
       execution_time = end_time - start_time
       print("execution time = " + str(execution_time))
@@ -147,7 +158,7 @@ def testingFunction(net_orig, net_df, net_hyb, net_fgsm):
                                std=std)])(im_orig)
       start_time = time.time()
       r, loop_i, label_orig, label_pert, pert_image, newf_k = foolx(im, net_hyb, eps)
-      print("Memory Usage: ", torch.cuda.memory_stats('cpu')['active.all.current'])
+      print("Memory Usage: ", torch.cuda.memory_stats(device)['active.all.current'])
       end_time = time.time()
       execution_time = end_time - start_time
       print("execution time = " + str(execution_time))
@@ -209,12 +220,12 @@ def testingFunction(net_orig, net_df, net_hyb, net_fgsm):
       img = (img - mean) / std
       img = img.transpose(2, 0, 1)
 
-      inp = Variable(torch.from_numpy(img).to('cpu').float().unsqueeze(0), requires_grad=True)
+      inp = Variable(torch.from_numpy(img).to(device).float().unsqueeze(0), requires_grad=True)
 
       out = net_orig(inp)
       criterion = nn.CrossEntropyLoss()
       pred = np.argmax(out.data.cpu().numpy())
-      loss = criterion(out, Variable(torch.Tensor([float(pred)]).to('cpu').long()))
+      loss = criterion(out, Variable(torch.Tensor([float(pred)]).to(device).long()))
       print('Prediction before attack: %s' % (classes[pred].split(',')[0]))
 
       # compute gradients
@@ -222,7 +233,7 @@ def testingFunction(net_orig, net_df, net_hyb, net_fgsm):
 
       # this is it, this is the method
       inp.data = inp.data + (eps * torch.sign(inp.grad.data))
-      print("Memory Usage: ", torch.cuda.memory_stats('cpu')['active.all.current'])
+      print("Memory Usage: ", torch.cuda.memory_stats(device)['active.all.current'])
       inp.grad.data.zero_()  # unnecessary
 
       end_time = time.time()
@@ -309,7 +320,10 @@ def foolxImmunityTesting(orig_net, foolx_net, eps, csvfilename):
         print("Original label (Original Network) = ", str_label_orig_orig)
         print("Perturbed label (Original Network) = ", str_label_orig_pert)
 
-        resultset = foolx_net(im[None, :].cpu())
+        if is_cuda:
+            resultset = foolx_net(im[None, :].cuda())
+        else:
+            resultset = foolx_net(im[None, :].cpu())
         result = np.argmax(resultset.detach().cpu().numpy())
         str_label_result = labels[np.int(result)].split(',')[0]
         print("Result from Immune Network = ", str_label_result)
@@ -387,7 +401,11 @@ def deepfoolImmunityTesting(orig_net, deepfool_net, csvfilename):
         print("Original label (Original Network) = ", str_label_orig_orig)
         print("Perturbed label (Original Network) = ", str_label_orig_pert)
 
-        resultset = deepfool_net(im[None, :].cpu())
+        if is_cuda:
+            resultset = deepfool_net(im[None, :].cuda())
+        else:
+            resultset = deepfool_net(im[None, :].cpu())
+
         result = np.argmax(resultset.detach().cpu().numpy())
         str_label_result = labels[np.int(result)].split(',')[0]
         print("Result from Immune Network = ", str_label_result)
@@ -458,12 +476,12 @@ def FGSMImmunityTesting(orig_net, fgsm_net, eps, csvfilename):
         img = img.transpose(2, 0, 1)
         eps = eps
 
-        inp = Variable(torch.from_numpy(img).to('cpu').float().unsqueeze(0), requires_grad=True)
+        inp = Variable(torch.from_numpy(img).to(device).float().unsqueeze(0), requires_grad=True)
 
         out = orig_net(inp)
         criterion = nn.CrossEntropyLoss()
         pred = np.argmax(out.data.cpu().numpy())
-        loss = criterion(out, Variable(torch.Tensor([float(pred)]).to('cpu').long()))
+        loss = criterion(out, Variable(torch.Tensor([float(pred)]).to(device).long()))
         print('Prediction before attack: %s' % (classes[pred].split(',')[0]))
         if (int(pred) == int(correct)):
             print("Original Classifier is correct")

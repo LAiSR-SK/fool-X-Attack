@@ -16,6 +16,17 @@ import os
 import glob
 import cv2
 
+#Check if cuda is available.
+is_cuda = torch.cuda.is_available()
+device = 'cpu'
+
+#If cuda is available use GPU for faster processing, if not, use CPU.
+if is_cuda:
+    print("Using GPU")
+    device = 'cuda:0'
+else:
+    print("Using CPU")
+
 #Evaluation of immunity on deepfool, foolx, FGSM; finetunes network on adversarial examples than uses functions in ImmunityTestingFunction.py to test
 
 #Define the network to be finetuned and use to train
@@ -24,6 +35,8 @@ import cv2
 net = models.resnet101(pretrained=True)
 #net = models.googlenet(pretrained=True)
 #Set network to evaluation mode
+if is_cuda:
+    net.cuda()
 net.eval()
 
 
@@ -39,9 +52,17 @@ foolxnet.train()
 fgsmnet = models.resnet101(pretrained=True)
 fgsmnet.train()
 
+if is_cuda:
+    deepfoolnet.cuda()
+    foolxnet.cuda()
+    fgsmnet.cuda()
+
+
 #Training function for deepfool, takes the original network, the network to be finetuned, and the name of the network that will be used in the csv and pth files
 def trainDeepfoolImmunity(orig_net, immunenet, name):
     immunenet.train()
+    if is_cuda:
+        immunenet.cuda()
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
 
@@ -77,7 +98,7 @@ def trainDeepfoolImmunity(orig_net, immunenet, name):
             inputs = pert_image
             labels = ILSVRClabels[np.int(counter)].split(' ')[1]
             labels = torch.tensor([int(labels)])
-            labels = labels.to('cpu')
+            labels = labels.to(device)
             # zero the parameter gradients
             optimizer.zero_grad()
 
@@ -103,6 +124,8 @@ def trainDeepfoolImmunity(orig_net, immunenet, name):
 
 #Training function for foolx, takes the original network, the network to be finetuned, the epsilon value, and the name of the network that will be used in the csv and pth files
 def trainFoolXImmunity(orig_net, immunenet, name, eps):
+    if is_cuda:
+        immunenet.cuda()
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(immunenet.parameters(), lr=1e-5)
     mean = [0.485, 0.456, 0.406]
@@ -133,7 +156,7 @@ def trainFoolXImmunity(orig_net, immunenet, name, eps):
             inputs = pert_image
             labels = ILSVRClabels[np.int(counter)].split(' ')[1]
             labels = torch.tensor([int(labels)])
-            labels = labels.to('cpu')
+            labels = labels.to(device)
             # zero the parameter gradients
             optimizer.zero_grad()
 
@@ -158,6 +181,8 @@ def trainFoolXImmunity(orig_net, immunenet, name, eps):
 
 #Training function for FGSM, takes the original network, the network to be finetuned, the epsilon value, and the name of the network that will be used in the csv and pth files
 def trainFGSMImmunity(orig_net, immunenet, name, eps):
+    if is_cuda:
+        immunenet.cuda()
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(immunenet.parameters(), lr=1e-5)
 
@@ -187,21 +212,21 @@ def trainFGSMImmunity(orig_net, immunenet, name, eps):
             img = (img - mean) / std
             img = img.transpose(2, 0, 1)
 
-            inp = Variable(torch.from_numpy(img).to('cpu').float().unsqueeze(0), requires_grad=True)
+            inp = Variable(torch.from_numpy(img).to(device).float().unsqueeze(0), requires_grad=True)
             out = orig_net(inp)
             pred = np.argmax(out.data.cpu().numpy())
 
-            loss = criterion(out, Variable(torch.Tensor([float(pred)]).to('cpu').long()))
+            loss = criterion(out, Variable(torch.Tensor([float(pred)]).to(device).long()))
             loss.backward()
 
             inp.data = inp.data + (eps * torch.sign(inp.grad.data))
-            print("Memory Usage: ", torch.cuda.memory_stats('cpu')['active.all.current'])
+            print("Memory Usage: ", torch.cuda.memory_stats(device)['active.all.current'])
             inp.grad.data.zero_()  # unnecessary
             inputs = inp
             labels = ILSVRClabels[np.int(counter)].split(' ')[1]
             #print(labels)
             labels = torch.tensor([int(labels)])
-            labels = labels.to('cpu')
+            labels = labels.to(device)
             # zero the parameter gradients
             optimizer.zero_grad()
 

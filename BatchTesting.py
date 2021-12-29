@@ -2,6 +2,15 @@
 
 
 
+
+
+
+
+
+
+
+
+
 import torch.nn as nn
 import torchvision.transforms as transforms
 import numpy as np
@@ -18,11 +27,11 @@ from imagenet_labels import classes
 import cv2
 import csv
 
-#Batch testing file for evaluation of hybrid method, deepfool, and FGSM, outputs result csv files. Evaluates each algorithm on 5000 images of ILSVRC validation dataset
+#Batch testing file for evaluation of foolx method, deepfool, and FGSM, outputs result csv files. Evaluates each algorithm on 5000 images of ILSVRC validation dataset
 
 #Choose different network architecture to test
-net = models.resnet34(pretrained=True)
-#net = models.alexnet(pretrained=True)
+#net = models.resnet101(pretrained=True)
+net = models.alexnet(pretrained=True)
 #net = models.googlenet(pretrained=True)
 #net = models.resnet101(pretrained=True)
 net.eval()
@@ -34,30 +43,24 @@ std = [ 0.229, 0.224, 0.225 ]
 
 #Define variables for results
 deepFool_Testing_Results = ""
-hybridApproach_Testing_Results = ""
+foolXApproach_Testing_Results = ""
 FGSM_Testing_Results = ""
 Accuracy = 0
 DeepfoolAccuracy = 0
-Hybrid2Accuracy = 0
+FoolXAccuracy = 0
 FGSMAccuracy = 0
 DeepfoolAvgFk = 0
-HybridAvgFk = 0
+FoolXAvgFk = 0
 FGSMAvgFk = 0
 DeepfoolAvgDiff = 0
-HybridAvgDiff = 0
+FoolXAvgDiff = 0
 FGSMAvgDiff = 0
 DeepfoolAvgFroDiff = 0
-HybridAvgFroDiff = 0
+FoolXAvgFroDiff = 0
 FGSMAvgFroDiff = 0
-DeepfoolAvgTime = 0
-DeepfoolAvgMem = 0
-HybridAvgTime = 0
-HybridAvgMem = 0
-FGSMAvgTime = 0
-FGSMAvgMem = 0
-deepfoolcsv = 'deepfoolresnet34ILSVRC.csv'
-hybridcsv = 'hybridresnet34ILSVRC.csv'
-fgsmcsv = 'fgsmresnet34ILSVRC.csv'
+deepfoolcsv = 'deepfoolRnet34ILSVRC.csv'
+foolxcsv = 'foolxRnet34ILSVRC0005.csv'
+fgsmcsv = 'fgsmRnet34ILSVRC0005.csv'
 fieldnames = ['Image', 'Original Label', 'Classified Label Before Perturbation', 'Perturbed Label', 'Memory Usage', 'Iterations', 'Time', 'F_k', 'Avg Difference', 'Frobenius of Difference']
 
 
@@ -66,9 +69,20 @@ dfrows = []
 hybrows = []
 fgsmrows = []
 
+#Check if cuda is available.
+is_cuda = torch.cuda.is_available()
+device = 'cpu'
+
+#If cuda is available use GPU for faster processing, if not, use CPU.
+if is_cuda:
+    print("Using GPU")
+    device = 'cuda:0'
+else:
+    print("Using CPU")
+
 
 #Define epsilon value, initialize counter to 0
-eps = 0.1
+eps = 0.0005
 counter = 0
 
 #Create csvwriter for each csv file
@@ -77,7 +91,7 @@ with open(deepfoolcsv, 'w', newline='') as csvfile:
 
     csvwriter.writerow(fieldnames)
 
-with open(hybridcsv, 'w', newline='') as csvfile:
+with open(foolxcsv, 'w', newline='') as csvfile:
     csvwriter = csv.writer(csvfile)
 
     csvwriter.writerow(fieldnames)
@@ -92,7 +106,7 @@ with open(fgsmcsv, 'w', newline='') as csvfile:
 ILSVRClabels = open(os.path.join('ILSVRC2012validation.txt'), 'r').read().split('\n')
 
 
-for filename in glob.glob('D:/ImageNet/ImagenetDataset/ILSVRC2012/ILSVRC/Data/CLS-LOC/val/*.JPEG'): #assuming jpg
+for filename in glob.glob('D:/Imagenet/ILSVRC2012/ILSVRC/Data/CLS-LOC/val/*.JPEG'): #assuming jpg
 
   print("\n\n\n\n\n\n\n\n\n****************DeepFool Testing *********************\n")
   #Open image
@@ -111,7 +125,7 @@ for filename in glob.glob('D:/ImageNet/ImagenetDataset/ILSVRC2012/ILSVRC/Data/CL
   start_time = time.time()
   #Input values to deepfool
   r, loop_i, label_orig, label_pert, pert_image, newf_k = deepfool(im, net)
-  print("Memory Usage: ", torch.cuda.memory_stats('cuda:0')['active.all.current'])
+  print("Memory Usage: ", torch.cuda.memory_stats(device)['active.all.current'])
   #Stop timer
   end_time = time.time()
   #Calculate execution time
@@ -178,11 +192,9 @@ for filename in glob.glob('D:/ImageNet/ImagenetDataset/ILSVRC2012/ILSVRC/Data/CL
   DeepfoolAvgFk = DeepfoolAvgFk + newf_k
   DeepfoolAvgDiff = DeepfoolAvgDiff + average
   DeepfoolAvgFroDiff = DeepfoolAvgFroDiff + fro
-  DeepfoolAvgTime = DeepfoolAvgTime + execution_time
-  DeepfoolAvgMem = DeepfoolAvgMem + torch.cuda.memory_stats('cuda:0')['active.all.current']
   dfrows = []
   #Append values to rows, append to csv file
-  dfrows.append([filename[47:75], str_label_correct, str_label_orig, str_label_pert, torch.cuda.memory_stats('cuda:0')['active.all.current'], str(loop_i), str(execution_time), newf_k, average, fro])
+  dfrows.append([filename[47:75], str_label_correct, str_label_orig, str_label_pert, torch.cuda.memory_stats(device)['active.all.current'], str(loop_i), str(execution_time), newf_k, average, fro])
   with open(deepfoolcsv, 'a', newline='') as csvfile:
       csvwriter = csv.writer(csvfile)
 
@@ -195,7 +207,7 @@ for filename in glob.glob('D:/ImageNet/ImagenetDataset/ILSVRC2012/ILSVRC/Data/CL
 
 
 
-  print(" \n\n\n**************** Hybrid Approach DeepFool 2 *********************\n" )
+  print(" \n\n\n**************** Fool-X *********************\n" )
   im_orig=Image.open(filename).convert('RGB')
   print(filename)
   im = transforms.Compose([
@@ -205,9 +217,9 @@ for filename in glob.glob('D:/ImageNet/ImagenetDataset/ILSVRC2012/ILSVRC/Data/CL
       transforms.Normalize(mean=mean,
                            std=std)])(im_orig)
   start_time = time.time()
-  #Input values to hybrid method
+  #Input values to foolx method
   r, loop_i, label_orig, label_pert, pert_image, newf_k = foolx(im, net, eps)
-  print("Memory Usage: ", torch.cuda.memory_stats('cuda:0')['active.all.current'])
+  print("Memory Usage: ", torch.cuda.memory_stats(device)['active.all.current'])
   end_time = time.time()
   execution_time = end_time - start_time
   print("execution time = " + str(execution_time))
@@ -225,7 +237,7 @@ for filename in glob.glob('D:/ImageNet/ImagenetDataset/ILSVRC2012/ILSVRC/Data/CL
   #If perturbed label matches correct label, add to accuracy count
   if (int(label_pert) == int(correct)):
       print("Classifier is correct")
-      Hybrid2Accuracy = Hybrid2Accuracy + 1
+      FoolXAccuracy = FoolXAccuracy + 1
 
   def clip_tensor(A, minv, maxv):
       A = torch.max(A, minv * torch.ones(A.shape))
@@ -244,19 +256,17 @@ for filename in glob.glob('D:/ImageNet/ImagenetDataset/ILSVRC2012/ILSVRC/Data/CL
   diff = imagetransform(pert_image.cpu()[0]) - tensortransform(im_orig)
   fro = np.linalg.norm(diff.numpy())
   average = torch.mean(torch.abs(diff))
-  HybridAvgFk = HybridAvgFk + newf_k
-  HybridAvgDiff = HybridAvgDiff + average
-  HybridAvgFroDiff = HybridAvgFroDiff + fro
-  HybridAvgTime = HybridAvgTime + execution_time
-  HybridAvgMem = HybridAvgMem + torch.cuda.memory_stats('cuda:0')['active.all.current']
+  FoolXAvgFk = FoolXAvgFk + newf_k
+  FoolXAvgDiff = FoolXAvgDiff + average
+  FoolXAvgFroDiff = FoolXAvgFroDiff + fro
   hybrows = []
-  hybrows.append([filename[47:75], str_label_correct, str_label_orig, str_label_pert, torch.cuda.memory_stats('cuda:0')['active.all.current'], str(loop_i), str(execution_time), newf_k, average, fro])
-  with open(hybridcsv, 'a', newline='') as csvfile:
+  hybrows.append([filename[47:75], str_label_correct, str_label_orig, str_label_pert, torch.cuda.memory_stats(device)['active.all.current'], str(loop_i), str(execution_time), newf_k, average, fro])
+  with open(foolxcsv, 'a', newline='') as csvfile:
       csvwriter = csv.writer(csvfile)
 
       csvwriter.writerows(hybrows)
 
-  print("#################################### END Hybrid Testing ############################################################\n")
+  print("#################################### END Fool-X Testing ############################################################\n")
 
 
 
@@ -280,12 +290,12 @@ for filename in glob.glob('D:/ImageNet/ImagenetDataset/ILSVRC2012/ILSVRC/Data/CL
   img = (img - mean) / std
   img = img.transpose(2, 0, 1)
   #Convert image into pytorch tensor, input image into network
-  inp = Variable(torch.from_numpy(img).to('cuda:0').float().unsqueeze(0), requires_grad=True)
+  inp = Variable(torch.from_numpy(img).to(device).float().unsqueeze(0), requires_grad=True)
 
   out = net(inp)
   criterion = nn.CrossEntropyLoss()
   pred = np.argmax(out.data.cpu().numpy())
-  loss = criterion(out, Variable(torch.Tensor([float(pred)]).to('cuda:0').long()))
+  loss = criterion(out, Variable(torch.Tensor([float(pred)]).to(device).long()))
   print('Prediction before attack: %s' % (classes[pred].split(',')[0]))
 
   # compute gradients
@@ -294,7 +304,7 @@ for filename in glob.glob('D:/ImageNet/ImagenetDataset/ILSVRC2012/ILSVRC/Data/CL
 
   # this is it, this is the method
   inp.data = inp.data + (eps * torch.sign(inp.grad.data))
-  print("Memory Usage: ", torch.cuda.memory_stats('cuda:0')['active.all.current'])
+  print("Memory Usage: ", torch.cuda.memory_stats(device)['active.all.current'])
   inp.grad.data.zero_()  # unnecessary
 
   end_time = time.time()
@@ -329,10 +339,8 @@ for filename in glob.glob('D:/ImageNet/ImagenetDataset/ILSVRC2012/ILSVRC/Data/CL
   FGSMAvgFk = FGSMAvgFk + f_k
   FGSMAvgDiff = FGSMAvgDiff + average
   FGSMAvgFroDiff = FGSMAvgFroDiff + fro
-  FGSMAvgTime = FGSMAvgTime + execution_time
-  FGSMAvgMem = FGSMAvgMem + torch.cuda.memory_stats('cuda:0')['active.all.current']
   fgsmrows = []
-  fgsmrows.append([filename[47:75], classes[int(correct)].split(',')[0], (classes[pred].split(',')[0]), (classes[pred_adv].split(',')[0]), torch.cuda.memory_stats('cuda:0')['active.all.current'], str(loop_i), str(execution_time), f_k, average, fro])
+  fgsmrows.append([filename[47:75], classes[int(correct)].split(',')[0], (classes[pred].split(',')[0]), (classes[pred_adv].split(',')[0]), torch.cuda.memory_stats(device)['active.all.current'], str(loop_i), str(execution_time), f_k, average, fro])
   with open(fgsmcsv, 'a', newline='') as csvfile:
       csvwriter = csv.writer(csvfile)
 
@@ -349,18 +357,14 @@ with open(deepfoolcsv, 'a', newline='') as csvfile:
     csvwriter.writerows(["Avg F_k: " + str(DeepfoolAvgFk/5000)])
     csvwriter.writerows(["Avg Difference: " + str(DeepfoolAvgDiff / 5000)])
     csvwriter.writerows(["Avg Frobenius of Difference: " + str(DeepfoolAvgFroDiff / 5000)])
-    csvwriter.writerows(["Avg Time: " + str(DeepfoolAvgTime / 5000)])
-    csvwriter.writerows(["Avg Memory: " + str(DeepfoolAvgMem / 5000)])
-with open(hybridcsv, 'a', newline='') as csvfile:
+with open(foolxcsv, 'a', newline='') as csvfile:
     csvwriter = csv.writer(csvfile)
     csvwriter.writerows(["Epsilon: " + str(eps)])
     csvwriter.writerows(["Accuracy: " + str(Accuracy / 5000)])
-    csvwriter.writerows(["Perturbed Accuracy: " + str(Hybrid2Accuracy/5000)])
-    csvwriter.writerows(["Avg F_k: " + str(HybridAvgFk/5000)])
-    csvwriter.writerows(["Avg Difference: " + str(HybridAvgDiff / 5000)])
-    csvwriter.writerows(["Avg Frobenius of Difference: " + str(HybridAvgFroDiff/5000)])
-    csvwriter.writerows(["Avg Time: " + str(HybridAvgTime / 5000)])
-    csvwriter.writerows(["Avg Memory: " + str(HybridAvgMem / 5000)])
+    csvwriter.writerows(["Perturbed Accuracy: " + str(FoolXAccuracy/5000)])
+    csvwriter.writerows(["Avg F_k: " + str(FoolXAvgFk/5000)])
+    csvwriter.writerows(["Avg Difference: " + str(FoolXAvgDiff / 5000)])
+    csvwriter.writerows(["Avg Frobenius of Difference: " + str(FoolXAvgFroDiff/5000)])
 with open(fgsmcsv, 'a', newline='') as csvfile:
     csvwriter = csv.writer(csvfile)
     csvwriter.writerows(["Epsilon: " + str(eps)])
@@ -369,5 +373,3 @@ with open(fgsmcsv, 'a', newline='') as csvfile:
     csvwriter.writerows(["Avg F_k: " + str(FGSMAvgFk/5000)])
     csvwriter.writerows(["Avg Difference: " + str(FGSMAvgDiff / 5000)])
     csvwriter.writerows(["Avg Frobenius of Difference: " + str(FGSMAvgFroDiff/5000)])
-    csvwriter.writerows(["Avg Time: " + str(FGSMAvgTime / 5000)])
-    csvwriter.writerows(["Avg Memory: " + str(FGSMAvgMem / 5000)])

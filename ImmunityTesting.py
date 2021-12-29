@@ -27,7 +27,8 @@ if is_cuda:
 else:
     print("Using CPU")
 
-#Evaluation of immunity on deepfool, foolx, FGSM; finetunes network on adversarial examples than uses functions in ImmunityTestingFunction.py to test
+#Evaluation of immunity on deepfool, foolx, FGSM; finetunes network on adversarial examples than uses functions in ImmunityTestingFunction.py to test.
+#Requires .pth files for trained networks.
 
 #Define the network to be finetuned and use to train
 #net = models.resnet34(pretrained=True)

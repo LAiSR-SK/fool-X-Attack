@@ -4,12 +4,15 @@ import torch as torch
 import copy
 from torch.autograd.gradcheck import zero_gradients
 
-#Fool-X algorithm code.
+#Fool-X algorithm to calculate minimum perturbation from maximum hyperplanes.
 
-def foolx(image, net, eps=0.05, num_classes=10, overshoot=0.02, max_iter=50): #image - the image to be input into the algorithm, net - the network for perturbations to be generated against,
-    #eps - epsilon value, controls the size of the perturbation, num_classes - number of nearby classes that will be used to calculate the perturbation, overshoot - termination value to prevent vanishing updates,
+def foolx(image, net, eps=0.05, num_classes=10, overshoot=0.02, max_iter=50):
+    #image - the image to be input into the algorithm, net - the network for perturbations to be generated against,
+    #eps - epsilon value, controls the size of the perturbation,
+    #num_classes - number of nearby classes that will be used to calculate the perturbation,
+    #overshoot - termination value to prevent vanishing updates,
     #max-iter - maximum iterations, if no perturbation is found, terminate after this number of iterations
-    
+
     #Check if cuda is available.
     is_cuda = torch.cuda.is_available()
 
@@ -24,11 +27,11 @@ def foolx(image, net, eps=0.05, num_classes=10, overshoot=0.02, max_iter=50): #i
     #Convert image into tensor readable by PyTorch, flatten image.
     f_image = net.forward(Variable(image[None, :, :, :], requires_grad=True)).data.cpu().numpy().flatten()
     #Create array of labels.
-    I = (np.array(f_image)).flatten().argsort()[::-1]
+    label_array = (np.array(f_image)).flatten().argsort()[::-1]
 
     #Define array as size of specified number of classes, set first class to the original label.
-    I = I[0:num_classes]
-    label = I[0]
+    label_array = label_array[0:num_classes]
+    label = label_array[0]
 
     #Copy the image, create variable for perturbed image, as well as w and r_tot, using the shape of the image
     input_shape = image.cpu().numpy().shape
@@ -39,18 +42,18 @@ def foolx(image, net, eps=0.05, num_classes=10, overshoot=0.02, max_iter=50): #i
     #initialize loop variable to 0
     loop_i = 0
 
-    #Set x to the original image, forward propagate it through the newtwork, get list of classes
+    #Set x to the original image, forward propagate it through the network, get list of classes
     x = Variable(pert_image[None, :], requires_grad=True)
-    fs = net.forward(x)
-    fs_list = [fs[0, I[k]] for k in range(num_classes)]
-    k_i = label
+    forward_prop = net.forward(x)
+    fp_list = [forward_prop[0, label_array[k]] for k in range(num_classes)]
+    current_label = label
 
     #While label equals original label and max iterations not reached:
-    while k_i == label and loop_i < max_iter:
+    while current_label == label and loop_i < max_iter:
 
         #Backwards propagate label through graph, get resulting gradient and gradient sign.
         pert = 0  # np.inf we change the to be zero instead of infinty
-        fs[0, I[0]].backward(retain_graph=True)
+        forward_prop[0, label_array[0]].backward(retain_graph=True)
         grad_orig = x.grad.data.cpu().numpy().copy()
         grad_orig_sign = x.grad.sign().cpu().numpy().copy()  # added for fgsm
 
@@ -58,17 +61,16 @@ def foolx(image, net, eps=0.05, num_classes=10, overshoot=0.02, max_iter=50): #i
             zero_gradients(x)
 
             #Backwards propagate current label through graph, get resulting gradient and gradient sign.
-            fs[0, I[k]].backward(retain_graph=True)
+            forward_prop[0, label_array[k]].backward(retain_graph=True)
             cur_grad = x.grad.data.cpu().numpy().copy()
             cur_sign_grad = x.grad.sign().cpu().numpy().copy()  # added for fgsm
 
             # set new w_k and new f_k
             w_k = cur_grad - grad_orig
-            w_k_sign = cur_sign_grad - grad_orig_sign  # added for fgsm
-            f_k = (fs[0, I[k]] - fs[0, I[0]]).data.cpu().numpy()
+            f_k = (forward_prop[0, label_array[k]] - forward_prop[0, label_array[0]]).data.cpu().numpy()
 
             #Calculate perturbation using deepfool formula
-            pert_k = abs(f_k) / np.linalg.norm(w_k.flatten()) #for L inf norm use ord=np.inf as argument in norm function, for L1 norm ord=1
+            pert_k = abs(f_k) / np.linalg.norm(w_k.flatten()) #ord=np.inf)
 
             # determine which w_k to use
             if pert_k > pert:  # we change here the "<" to be ">" to get the max hyperplanes
@@ -93,12 +95,12 @@ def foolx(image, net, eps=0.05, num_classes=10, overshoot=0.02, max_iter=50): #i
         x = Variable(pert_image, requires_grad=True)
 
         #Propagate x through network, get new label, get new f_k distance.
-        fs = net.forward(x)
-        k_i = np.argmax(fs.data.cpu().numpy().flatten())
-        newf_k = (fs[0, k_i] - fs[0, I[0]]).data.cpu().numpy()
+        forward_prop = net.forward(x)
+        current_label = np.argmax(forward_prop.data.cpu().numpy().flatten())
+        newf_k = (forward_prop[0, current_label] - forward_prop[0, label_array[0]]).data.cpu().numpy()
         loop_i += 1
 
 
     r_tot = (1 + overshoot) * r_tot
 
-    return r_tot, loop_i, label, k_i, pert_image, newf_k #add pert for single test
+    return r_tot, loop_i, label, current_label, pert_image, pert, newf_k

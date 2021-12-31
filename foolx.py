@@ -55,7 +55,7 @@ def foolx(image, net, eps=0.05, num_classes=10, overshoot=0.02, max_iter=50):
         pert = 0  # np.inf we change the to be zero instead of infinty
         forward_prop[0, label_array[0]].backward(retain_graph=True)
         grad_orig = x.grad.data.cpu().numpy().copy()
-        grad_orig_sign = x.grad.sign().cpu().numpy().copy()  # added for fgsm
+        #grad_orig_sign = x.grad.sign().cpu().numpy().copy()  # added for fgsm
 
         for k in range(1, num_classes):
             zero_gradients(x)
@@ -69,7 +69,7 @@ def foolx(image, net, eps=0.05, num_classes=10, overshoot=0.02, max_iter=50):
             w_k = cur_grad - grad_orig
             f_k = (forward_prop[0, label_array[k]] - forward_prop[0, label_array[0]]).data.cpu().numpy()
 
-            #Calculate perturbation using deepfool formula
+            #Calculate perturbation using 
             pert_k = abs(f_k) / np.linalg.norm(w_k.flatten()) #ord=np.inf)
 
             # determine which w_k to use

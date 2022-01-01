@@ -55,7 +55,6 @@ def foolx(image, net, eps=0.05, num_classes=10, overshoot=0.02, max_iter=50):
         pert = 0  # np.inf we change the to be zero instead of infinty
         forward_prop[0, label_array[0]].backward(retain_graph=True)
         grad_orig = x.grad.data.cpu().numpy().copy()
-        #grad_orig_sign = x.grad.sign().cpu().numpy().copy()  # added for fgsm
 
         for k in range(1, num_classes):
             zero_gradients(x)
@@ -63,7 +62,6 @@ def foolx(image, net, eps=0.05, num_classes=10, overshoot=0.02, max_iter=50):
             #Backwards propagate current label through graph, get resulting gradient and gradient sign.
             forward_prop[0, label_array[k]].backward(retain_graph=True)
             cur_grad = x.grad.data.cpu().numpy().copy()
-            cur_sign_grad = x.grad.sign().cpu().numpy().copy()  # added for fgsm
 
             # set new w_k and new f_k
             w_k = cur_grad - grad_orig
@@ -76,6 +74,7 @@ def foolx(image, net, eps=0.05, num_classes=10, overshoot=0.02, max_iter=50):
             if pert_k > pert:  # we change here the "<" to be ">" to get the max hyperplanes
                 pert = pert_k
                 w = w_k
+                cur_sign_grad = x.grad.sign().cpu().numpy().copy()
             point = k
         # compute r_i and r_tot
         # Added 1e-4 for numerical stability

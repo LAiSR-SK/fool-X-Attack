@@ -74,12 +74,14 @@ def foolx(image, net, eps=0.05, num_classes=10, overshoot=0.02, max_iter=50):
             if pert_k > pert:  # we change here the "<" to be ">" to get the max hyperplanes
                 pert = pert_k
                 w = w_k
-                cur_sign_grad = x.grad.sign().cpu().numpy().copy()
+               
             point = k
         # compute r_i and r_tot
         # Added 1e-4 for numerical stability
-        r_i = (pert + 1e-4) * w / np.linalg.norm(w)
+        r_i = (pert) * w / np.linalg.norm(w)
         #combined calculated perturbation with FGSM, multiply the gradient by the epsilon value
+        #Compute the sing of the Farthest hyperplane
+        cur_sign_grad = x.grad.sign().cpu().numpy().copy()
         r_tot = np.float32(r_tot + r_i) + eps * cur_sign_grad #w_k_sign
 
         #If cuda is being used, store perturbed image tensor in GPU, if not, store it in CPU

@@ -1,123 +1,138 @@
-""" Fast Gradient Sign Method
-    Paper link: https://arxiv.org/abs/1607.02533
-"""
-#Modified code from: https://github.com/jiayunhan/adversarial-pytorch/blob/master/fgsm.py
-
-import torch
-from torch.autograd import Variable
+import art
 from torchvision import models
-import torch.nn as nn
 from torchvision import transforms
-
-import numpy as np
-import cv2
-import argparse
-from imagenet_labels import classes
-import time
+import torch
 import matplotlib.pyplot as plt
+from PIL import Image
+import numpy as np
+import os
+
+im_orig = Image.open('pictures/test_im2.jpg')
+net = models.resnet34(pretrained=True)
+net.eval()
+
+mean = [ 0.485, 0.456, 0.406 ]
+std = [ 0.229, 0.224, 0.225 ]
+
+def clip_tensor(A, minv, maxv):
+    A = torch.max(A, minv*torch.ones(A.shape))
+    A = torch.min(A, maxv*torch.ones(A.shape))
+    return A
+
+clip = lambda x: clip_tensor(x, 0, 255)
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--img', type=str, default='pictures/test_im2.jpg', help='path to image')
-parser.add_argument('--model', type=str, default='resnet34', choices=['resnet18', 'resnet50', 'resnet34'], required=False, help="Which network?")
-parser.add_argument('--y', type=int, required=False, help='Label')
-parser.add_argument('--gpu', action="store_true", default=False)
+tf = transforms.Compose([transforms.Normalize(mean=[0, 0, 0], std=list(map(lambda x: 1 / x, std))),
+                        transforms.Normalize(list(map(lambda x: -x, mean)), std=[1, 1, 1]),
+                        transforms.Lambda(clip),
+                        transforms.ToPILImage(),
+                        transforms.CenterCrop(224)])
 
-args = parser.parse_args()
-image_path = args.img
-model_name = args.model
-y_true = args.y
-gpu = args.gpu
+tf_mod = transforms.Compose([transforms.ToPILImage(),
+                        transforms.CenterCrop(224)])
 
-IMG_SIZE = 224
+preprocess = transforms.Compose([
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
 
-print('Fast Gradient Sign Method')
-print('Model: %s' %(model_name))
-print()
+criterion = torch.nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(net.parameters(), lr=0.01)
 
+classifier = art.estimators.classification.PyTorchClassifier(
+    model=net,
+    input_shape=(3, 224, 224),
+    loss = criterion,
+    optimizer=optimizer,
+    nb_classes=1000
+)
 
-def nothing(x):
-    pass
+input_tensor = preprocess(im_orig)
+input_batch = input_tensor.unsqueeze(0)
+print(input_batch.shape)
 
-window_adv = 'perturbation'
-#cv2.namedWindow(window_adv)
-#cv2.createTrackbar('eps', window_adv, 1, 255, nothing)
+a = classifier.predict(input_batch, 1, False)
+#print(a)
 
+label_orig = np.argmax(a.flatten())
+print(label_orig)
 
-# load image and reshape to (3, 224, 224) and RGB (not BGR)
-# preprocess as described here: http://pytorch.org/docs/master/torchvision/models.html
-orig = cv2.imread(image_path)[..., ::-1]
-orig = cv2.resize(orig, (IMG_SIZE, IMG_SIZE))
-img = orig.copy().astype(np.float32)
-perturbation = np.empty_like(orig)
+labels = open(os.path.join('synset_words.txt'), 'r').read().split('\n')
 
-mean = [0.485, 0.456, 0.406]
-std = [0.229, 0.224, 0.225]
-img /= 255.0
-img = (img - mean)/std
-img = img.transpose(2, 0, 1)
+str_label_orig = labels[np.int(label_orig)].split(',')[0]
 
+print("Original label = ", str_label_orig)
 
-# load model
-model = getattr(models, model_name)(pretrained=True)
-model.eval()
-criterion = nn.CrossEntropyLoss()
+attack = art.attacks.evasion.FastGradientMethod(estimator=classifier, eps=0.2, norm=np.inf)
 
-device = 'cpu'
+input_array = input_batch.numpy()
+img_adv = attack.generate(x=input_array)
 
+b = classifier.predict(img_adv, 1, False)
+label_pert = np.argmax(b.flatten())
+str_label_pert = labels[np.int(label_pert)].split(',')[0]
+print("Perturbed label = ", str_label_pert)
 
-# prediction before attack
-inp = Variable(torch.from_numpy(img).to(device).float().unsqueeze(0), requires_grad=True)
+original_img = input_array.squeeze()
+perturbed_img = img_adv.squeeze()
+original_img = original_img.swapaxes(0,1) #(3,224,224) -> (224,3,224)
+original_img = original_img.swapaxes(1,2) #(224,3,224) -> (224,224,3)
+#perturbed_img = perturbed_img.swapaxes(0,1)
+#perturbed_img = perturbed_img.swapaxes(1,2)
 
-out = model(inp)
+print(original_img.shape)
+print(input_tensor.shape)
+print(original_img)
+print(input_tensor)
+print(label_pert)
+
+inp = torch.autograd.Variable(torch.from_numpy(input_array[0]).to('cpu').float().unsqueeze(0), requires_grad=True)
+out = net(inp)
+criterion = torch.nn.CrossEntropyLoss()
 pred = np.argmax(out.data.cpu().numpy())
-print('Prediction before attack: %s' %(classes[pred].split(',')[0]))
+loss = criterion(out, torch.autograd.Variable(torch.Tensor([float(pred)]).long()))
+
+# compute gradients
+loss.backward()
+grad_orig = inp.grad.data.cpu().numpy().copy()
+
+# this is it, this is the method
+inp.data = inp.data + (0.2 * torch.sign(inp.grad.data))
+inp.grad.data.zero_()  # unnecessary
+fs = net.forward(inp)
+
+correct = '150'
+pred_adv = np.argmax(net(inp).data.cpu().numpy())
+print(pred)
+print(pred_adv)
+f_k = (fs[0, pred_adv] - fs[0, int(correct)]).data.cpu().numpy()
+print(f_k)
+adv = inp.data.cpu().numpy()[0]
+adv = adv.transpose(1, 2, 0)
+adv = (adv * std) + mean
+adv = adv * 255.0
+adv = np.clip(adv, 0, 255).astype(np.uint8)
+#adv = adv.transpose(1, 0, 2) #3,224,224
+print(adv.shape)
+print(input_tensor.shape)
+
+plt.figure()
+plt.imshow(tf(torch.from_numpy(adv)))
+plt.title(str_label_pert)
+plt.show()
 
 
+plt.figure()
+plt.imshow(tf(input_tensor))
+plt.title(str_label_orig)
+plt.show()
+plt.imshow(tf(torch.from_numpy(perturbed_img)))
+plt.title(str_label_pert)
+plt.show()
 
-while True:
-    eps = 10#cv2.getTrackbarPos('eps', window_adv)
-
-    inp = Variable(torch.from_numpy(img).to(device).float().unsqueeze(0), requires_grad=True)
-
-    start_time = time.time()
-    out = model(inp)
-    loss = criterion(out, Variable(torch.Tensor([float(pred)]).to(device).long()))
-
-    loss.backward()
-
-
-    inp.data = inp.data + ((eps/255.0) * torch.sign(inp.grad.data))
-    inp.grad.data.zero_()
-    end_time = time.time()
-    execution_time = end_time - start_time
-    print("execution time = " + str(execution_time))
-
-    # predict on the adversarial image
-    pred_adv = np.argmax(model(inp).data.cpu().numpy())
-    print(" "*60, end='\r') # to clear previous line, not an elegant way
-    print("After attack: eps [%f] \t%s"
-            %(eps, classes[pred_adv].split(',')[0]), end="\r")#, end='\r')#'eps:', eps, end='\r')
-
-    #print("After attack: " + str(eps/255) + " " + classes[pred_adv].split(',')[0])
-
-    # deprocess image
-    adv = inp.data.cpu().numpy()[0]
-    perturbation = (adv - img).transpose(1, 2, 0) #cv2.normalize((adv - img).transpose(1, 2, 0), perturbation, 0, 255, cv2.NORM_MINMAX, 0)
-    adv = adv.transpose(1, 2, 0)
-    adv = (adv * std) + mean
-    adv = adv * 255.0
-    adv = adv[..., ::-1] # RGB to BGR
-    adv = np.clip(adv, 0, 255).astype(np.uint8)
-    perturbation = perturbation * 255
-    perturbation = np.clip(perturbation, 0, 255).astype(np.uint8)
-
-    plt.figure()
-    plt.imshow(perturbation)
-    plt.title("Perturbation")
-
-    plt.imshow(adv)
-    plt.show()
-
-    break
-
+fgsm_p = torch.from_numpy(perturbed_img) - input_tensor
+plt.imshow(tf_mod(fgsm_p))
+plt.title(str_label_pert)
+plt.show()

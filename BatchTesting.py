@@ -608,4 +608,3 @@ runBatchTestFGSM_nonART(netg, 0.01, 'googlenet01.csv')
 runBatchTestFGSM_nonART(netg, 0.1, 'googlenet1.csv')
 
 
-
